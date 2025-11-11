@@ -2,7 +2,6 @@ fastapi==0.109.0
 uvicorn[standard]==0.27.0
 websockets==12.0
 python-multipart==0.0.6
-# Keep chromadb 0.4.x -> requires Pydantic v1
 chromadb==0.4.22
 requests==2.31.0
 rich==13.7.0
