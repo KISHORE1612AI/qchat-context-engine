@@ -28,7 +28,7 @@ echo "✅ embeddinggemma ready"
 test -f templates/index.html || { echo "❌ templates/index.html not found"; exit 1; }
 
 # Install requirements (safe for cloud build)
-pip install --no-cache-dir -r requirements.txt
+
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✅ Starting FastAPI server..."
