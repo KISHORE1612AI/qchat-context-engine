@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Q Chat V6.3.2 - KISHORE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .message { animation: fadeIn 0.2s ease-out; }
+        
+        .raw-output {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 12px;
+            border-radius: 6px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .enhanced-section {
+            background: #f8f9fa;
+            border-left: 4px solid #6366f1;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 4px;
+        }
+        
+        .prompt-box {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 10px;
+            margin: 6px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 overflow-hidden" x-data="chatApp()">
+    
+    <div class="flex h-screen">
+        
+        <!-- Sidebar -->
+        <div 
+            x-show="sidebarOpen" 
+            x-transition
+            class="w-64 bg-gray-900 text-white flex flex-col border-r border-gray-700">
+            
+            <!-- Sidebar Header -->
+            <div class="p-4 border-b border-gray-700">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <div class="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center">
+                            <span class="text-white font-bold text-sm">Q</span>
+                        </div>
+                        <span class="font-semibold text-sm">Q Chat V6.3.2</span>
+                    </div>
+                    <button @click="sidebarOpen = false" class="lg:hidden text-gray-400 hover:text-white">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- New Chat Button -->
+                <button 
+                    @click="newConversation()"
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2 text-sm font-medium flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    New Chat
+                </button>
+            </div>
+            
+            <!-- Conversations List -->
+            <div class="flex-1 overflow-y-auto p-2">
+                <div class="text-xs text-gray-400 px-2 mb-2">Recent Conversations</div>
+                
+                <template x-for="conv in conversations" :key="conv.id">
+                    <button 
+                        @click="loadConversation(conv.id)"
+                        :class="{'bg-gray-800': currentConversationId === conv.id}"
+                        class="w-full text-left px-3 py-2 rounded hover:bg-gray-800 mb-1 group">
+                        <div class="flex items-start justify-between">
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm font-medium text-white truncate" x-text="conv.title"></div>
+                                <div class="text-xs text-gray-400 mt-0.5">
+                                    <span x-text="conv.message_count"></span> messages
+                                </div>
+                            </div>
+                            <div class="text-xs text-gray-500 ml-2" x-text="formatDate(conv.updated_at)"></div>
+                        </div>
+                    </button>
+                </template>
+                
+                <div x-show="conversations.length === 0" class="text-center py-8 text-gray-500 text-sm">
+                    No conversations yet
+                </div>
+            </div>
+            
+            <!-- Sidebar Footer -->
+            <div class="p-4 border-t border-gray-700">
+                <div class="text-xs text-gray-400 space-y-1">
+                    <div>💾 <span x-text="analytics.total_interactions"></span> interactions</div>
+                    <div>💬 <span x-text="analytics.total_conversations"></span> conversations</div>
+                </div>
+                <button 
+                    @click="clearAllHistory()"
+                    class="mt-3 w-full text-xs text-red-400 hover:text-red-300 py-2">
+                    Clear All History
+                </button>
+            </div>
+        </div>
+        
+        <!-- Main Chat Area -->
+        <div class="flex-1 flex flex-col">
+            
+            <!-- Header -->
+            <div class="border-b bg-white">
+                <div class="px-4 py-3 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <button 
+                            @click="sidebarOpen = !sidebarOpen"
+                            class="text-gray-600 hover:text-gray-900">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                            </svg>
+                        </button>
+                        <div>
+                            <h1 class="font-semibold text-gray-900" x-text="currentConversationTitle"></h1>
+                            <p class="text-xs text-gray-500">
+                                <span x-show="sessionId">Session Active</span>
+                                <span x-show="!sessionId">No active session</span>
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="text-xs text-gray-500">
+                        
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chat Messages -->
+            <div class="flex-1 overflow-y-auto p-4" id="chat">
+                
+                <!-- Empty State -->
+                <div x-show="messages.length === 0" class="text-center py-12">
+                    <div class="text-4xl mb-3">💬</div>
+                    <h2 class="text-lg font-semibold text-gray-800 mb-2">Ask me anything</h2>
+                    <p class="text-sm text-gray-500 mb-4">Context with timestamps + Auto-deduplication</p>
+                    <div class="flex gap-2 justify-center flex-wrap">
+                        <button @click="useExample('What\'s my S3 naming convention?')" 
+                                class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">
+                            S3 naming
+                        </button>
+                        <button @click="useExample('Create a Lambda function')" 
+                                class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">
+                            Lambda
+                        </button>
+                        <button @click="useExample('List my DynamoDB tables')" 
+                                class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded">
+                            DynamoDB
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Messages -->
+                <div class="max-w-4xl mx-auto space-y-4">
+                    <template x-for="msg in messages" :key="msg.id">
+                        <div class="message">
+                            
+                            <!-- User Message -->
+                            <div x-show="msg.type === 'user'" class="flex justify-end">
+                                <div class="max-w-2xl bg-indigo-600 text-white rounded-lg px-4 py-2">
+                                    <p class="text-sm" x-text="msg.content"></p>
+                                </div>
+                            </div>
+                            
+                            <!-- Context Badge (with timestamps) -->
+                            <div x-show="msg.type === 'contexts' && msg.contexts && msg.contexts.length > 0">
+                                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                        </svg>
+                                        <span class="text-xs font-medium text-blue-900">Found relevant context (deduplicated):</span>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <template x-for="ctx in msg.contexts" :key="ctx.query">
+                                            <div class="bg-white rounded p-2">
+                                                <div class="flex items-start gap-2 mb-1">
+                                                    <span class="bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-medium text-xs" 
+                                                          x-text="(ctx.similarity * 100).toFixed(0) + '%'"></span>
+                                                    <span class="text-xs text-gray-700 flex-1" x-text="ctx.query"></span>
+                                                </div>
+                                                <div class="text-xs text-gray-500 mt-1">
+                                                    🕒 <span x-text="formatTimestamp(ctx.timestamp)"></span>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Enhanced Prompt View (NEW) -->
+                            <div x-show="msg.type === 'enhanced_prompt'">
+                                <div class="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-2">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                            </svg>
+                                            <span class="text-xs font-medium text-purple-900">Enhanced Prompt View</span>
+                                        </div>
+                                        <button 
+                                            @click="msg.show_enhanced = !msg.show_enhanced"
+                                            class="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1">
+                                            <span x-text="msg.show_enhanced ? 'Hide' : 'Show'"></span>
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                      :d="msg.show_enhanced ? 'M19 9l-7 7-7-7' : 'M9 5l7 7-7 7'"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    
+                                    <div x-show="msg.show_enhanced" x-transition class="space-y-3">
+                                        <!-- Original Query -->
+                                        <div>
+                                            <div class="text-xs font-medium text-gray-700 mb-1">📝 Original Query:</div>
+                                            <div class="prompt-box text-gray-800" x-text="msg.original_query"></div>
+                                        </div>
+                                        
+                                        <!-- Formatted Prompt (Full) -->
+                                        <div>
+                                            <div class="text-xs font-medium text-gray-700 mb-1">🚀 Enhanced Prompt (with context + history):</div>
+                                            <div class="prompt-box text-gray-700" x-text="msg.formatted_prompt"></div>
+                                            <div class="text-xs text-gray-500 mt-1">
+                                                Length: <span x-text="msg.formatted_prompt.length"></span> characters
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Copy Button -->
+                                        <button 
+                                            @click="copyToClipboard(msg.formatted_prompt)"
+                                            class="text-xs bg-purple-600 text-white px-3 py-1.5 rounded hover:bg-purple-700">
+                                            📋 Copy Enhanced Prompt
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Status -->
+                            <div x-show="msg.type === 'status'" class="text-center">
+                                <span class="inline-block bg-gray-100 text-gray-600 rounded-full px-3 py-1 text-xs" 
+                                      x-text="msg.content"></span>
+                            </div>
+                            
+                            <!-- Assistant Message -->
+                            <div x-show="msg.type === 'assistant'" class="flex justify-start">
+                                <div class="max-w-2xl bg-white border border-gray-200 rounded-lg shadow-sm">
+                                    <!-- Cleaned Response -->
+                                    <div class="px-4 py-3">
+                                        <div x-html="format(msg.content)" class="text-sm text-gray-800 prose prose-sm max-w-none"></div>
+                                    </div>
+                                    
+                                    <!-- Raw Output Toggle -->
+                                    <div x-show="msg.has_raw" class="border-t border-gray-200 px-4 py-2">
+                                        <button 
+                                            @click="msg.show_raw = !msg.show_raw"
+                                            class="text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1">
+                                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                                      :d="msg.show_raw ? 'M19 9l-7 7-7-7' : 'M9 5l7 7-7 7'"/>
+                                            </svg>
+                                            <span x-text="msg.show_raw ? 'Hide Raw Output' : 'Show Raw Output'"></span>
+                                            <span class="text-gray-400" x-text="'(' + msg.raw_content.length + ' chars)'"></span>
+                                        </button>
+                                        
+                                        <!-- Raw Output Display -->
+                                        <div x-show="msg.show_raw" x-transition class="mt-2">
+                                            <div class="raw-output" x-text="msg.raw_content"></div>
+                                            <div class="mt-2 flex gap-2">
+                                                <button 
+                                                    @click="copyToClipboard(msg.raw_content)"
+                                                    class="text-xs bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700">
+                                                    📋 Copy Raw
+                                                </button>
+                                                <button 
+                                                    @click="downloadRaw(msg.raw_content)"
+                                                    class="text-xs bg-gray-800 text-white px-3 py-1 rounded hover:bg-gray-700">
+                                                    💾 Download
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                        </div>
+                    </template>
+                    
+                    <!-- Typing Indicator -->
+                    <div x-show="isTyping" class="flex justify-start">
+                        <div class="bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm">
+                            <div class="flex gap-1">
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+                                <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+            
+            <!-- Input -->
+            <div class="border-t bg-white p-4">
+                <div class="max-w-4xl mx-auto">
+                    <form @submit.prevent="send()" class="flex gap-2">
+                        <input 
+                            type="text" 
+                            x-model="input"
+                            :disabled="isTyping"
+                            placeholder="Type your message..."
+                            class="flex-1 rounded-lg border-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                        <button 
+                            type="submit"
+                            :disabled="!input.trim() || isTyping"
+                            class="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                            Send
+                        </button>
+                    </form>
+                    <div class="text-xs text-gray-500 mt-2 text-center">
+                        💡 V6.3.2: Timestamps + Auto-deduplication + Enhanced prompt view
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        function chatApp() {
+            return {
+                // UI State
+                sidebarOpen: true,
+                
+                // Chat State
+                messages: [],
+                input: '',
+                isTyping: false,
+                
+                // Session State
+                ws: null,
+                currentConversationId: null,
+                currentConversationTitle: 'New Conversation',
+                sessionId: null,
+                
+                // Data
+                conversations: [],
+                analytics: { 
+                    total_interactions: 0,
+                    total_conversations: 0
+                },
+                
+                init() {
+                    this.connect();
+                    this.loadConversations();
+                    this.loadStats();
+                    
+                    if (window.innerWidth < 1024) {
+                        this.sidebarOpen = false;
+                    }
+                },
+                
+                connect() {
+                    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    this.ws = new WebSocket(`${proto}//${location.host}/ws/chat`);
+                    
+                    this.ws.onmessage = (e) => {
+                        const data = JSON.parse(e.data);
+                        
+                        if (data.type === 'conversation_created') {
+                            this.currentConversationId = data.conversation_id;
+                            this.sessionId = data.session_id;
+                            this.loadConversations();
+                            
+                        } else if (data.type === 'conversation_loaded') {
+                            this.currentConversationId = data.conversation_id;
+                            this.sessionId = data.session_id;
+                            this.messages = [];
+                            
+                            data.messages.forEach(msg => {
+                                this.add('user', msg.query);
+                                this.addAssistant(msg.response, msg.raw_response, msg.has_raw);
+                            });
+                            
+                        } else if (data.type === 'status') {
+                            this.add('status', data.message);
+                            
+                        } else if (data.type === 'contexts' && data.data.length) {
+                            this.add('contexts', '', data.data);
+                            
+                        } else if (data.type === 'formatted_prompt') {
+                            // NEW: Handle enhanced prompt view
+                            this.addEnhancedPrompt(
+                                data.original_query,
+                                data.formatted_prompt
+                            );
+                            
+                        } else if (data.type === 'response') {
+                            this.isTyping = false;
+                            this.addAssistant(data.data, data.raw_data || '', data.has_raw || false);
+                            this.loadStats();
+                            this.loadConversations();
+                            
+                        } else if (data.type === 'complete') {
+                            this.messages = this.messages.filter(m => m.type !== 'status');
+                        }
+                    };
+                    
+                    this.ws.onclose = () => {
+                        console.log('WebSocket closed, reconnecting...');
+                        setTimeout(() => this.connect(), 3000);
+                    };
+                    
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                    };
+                },
+                
+                newConversation() {
+                    this.messages = [];
+                    this.currentConversationId = null;
+                    this.sessionId = null;
+                    this.currentConversationTitle = 'New Conversation';
+                    
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({ 
+                            action: 'new_conversation' 
+                        }));
+                    }
+                    
+                    if (window.innerWidth < 1024) {
+                        this.sidebarOpen = false;
+                    }
+                },
+                
+                async loadConversation(conversationId) {
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({ 
+                            action: 'load_conversation',
+                            conversation_id: conversationId
+                        }));
+                        
+                        const conv = this.conversations.find(c => c.id === conversationId);
+                        if (conv) {
+                            this.currentConversationTitle = conv.title;
+                        }
+                        
+                        if (window.innerWidth < 1024) {
+                            this.sidebarOpen = false;
+                        }
+                    }
+                },
+                
+                send() {
+                    if (!this.input.trim() || this.isTyping) return;
+                    
+                    const message = this.input.trim();
+                    this.add('user', message);
+                    
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify({ 
+                            action: 'chat',
+                            message: message 
+                        }));
+                    }
+                    
+                    this.input = '';
+                    this.isTyping = true;
+                    this.scroll();
+                },
+                
+                useExample(text) {
+                    this.input = text;
+                    this.send();
+                },
+                
+                add(type, content, contexts = []) {
+                    this.messages.push({
+                        id: Date.now() + Math.random(),
+                        type,
+                        content,
+                        contexts
+                    });
+                    this.$nextTick(() => this.scroll());
+                },
+                
+                addEnhancedPrompt(originalQuery, formattedPrompt) {
+                    this.messages.push({
+                        id: Date.now() + Math.random(),
+                        type: 'enhanced_prompt',
+                        original_query: originalQuery,
+                        formatted_prompt: formattedPrompt,
+                        show_enhanced: false
+                    });
+                    this.$nextTick(() => this.scroll());
+                },
+                
+                addAssistant(content, rawContent, hasRaw) {
+                    this.messages.push({
+                        id: Date.now() + Math.random(),
+                        type: 'assistant',
+                        content: content,
+                        raw_content: rawContent,
+                        has_raw: hasRaw,
+                        show_raw: false
+                    });
+                    this.$nextTick(() => this.scroll());
+                },
+                
+                async loadConversations() {
+                    try {
+                        const res = await fetch('/api/conversations');
+                        const data = await res.json();
+                        this.conversations = data.conversations || [];
+                    } catch (e) {
+                        console.error('Failed to load conversations:', e);
+                    }
+                },
+                
+                async loadStats() {
+                    try {
+                        const res = await fetch('/api/analytics');
+                        this.analytics = await res.json();
+                    } catch (e) {
+                        console.error('Failed to load stats:', e);
+                    }
+                },
+                
+                async clearAllHistory() {
+                    if (!confirm('Clear ALL history? This cannot be undone.')) return;
+                    
+                    try {
+                        await fetch('/api/clear', { method: 'DELETE' });
+                        this.messages = [];
+                        this.conversations = [];
+                        this.currentConversationId = null;
+                        this.sessionId = null;
+                        this.loadStats();
+                        alert('✅ History cleared successfully');
+                    } catch (e) {
+                        alert('❌ Failed to clear history');
+                    }
+                },
+                
+                copyToClipboard(text) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        alert('✅ Copied to clipboard!');
+                    }).catch(err => {
+                        console.error('Failed to copy:', err);
+                        alert('❌ Failed to copy to clipboard');
+                    });
+                },
+                
+                downloadRaw(text) {
+                    const blob = new Blob([text], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `qchat-raw-${Date.now()}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                },
+                
+                format(text) {
+                    text = text.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold">$1</strong>');
+                    text = text.replace(/`(.+?)`/g, '<code class="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono">$1</code>');
+                    text = text.replace(/\n/g, '<br>');
+                    text = text.replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>');
+                    return text;
+                },
+                
+                formatDate(dateStr) {
+                    if (!dateStr) return '';
+                    const date = new Date(dateStr);
+                    const now = new Date();
+                    const diffMs = now - date;
+                    const diffMins = Math.floor(diffMs / 60000);
+                    
+                    if (diffMins < 60) return `${diffMins}m`;
+                    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h`;
+                    return `${Math.floor(diffMins / 1440)}d`;
+                },
+                
+                formatTimestamp(timestamp) {
+                    if (!timestamp) return 'No timestamp';
+                    
+                    try {
+                        const date = new Date(timestamp);
+                        const now = new Date();
+                        const diffMs = now - date;
+                        const diffMins = Math.floor(diffMs / 60000);
+                        const diffHours = Math.floor(diffMs / 3600000);
+                        const diffDays = Math.floor(diffMs / 86400000);
+                        
+                        if (diffMins < 1) return 'Just now';
+                        if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+                        if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+                        if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+                        
+                        // Format as date
+                        return date.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                    } catch (e) {
+                        return timestamp;
+                    }
+                },
+                
+                scroll() {
+                    this.$nextTick(() => {
+                        const el = document.getElementById('chat');
+                        if (el) {
+                            el.scrollTop = el.scrollHeight;
+                        }
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
